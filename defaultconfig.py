@@ -1,1 +1,1 @@
-config(plotLabels=[("target", "#00FFFF")])
+config(plotLabels=[("target", "#00FFFF")], serialPort="COM4")
