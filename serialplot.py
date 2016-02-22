@@ -4,33 +4,45 @@ import pyqtgraph as pg
 from serial import Serial, SerialException
 
 class SerialWorker(QtCore.QObject):
-    readline = QtCore.pyqtSignal()
+    """
+        Serial Worker that reads lines from the serial port
+    """
+    readline = QtCore.pyqtSignal(str)
 
     def __init__(self):
         super(SerialWorker, self).__init__()
+        self.active = True
         self.serial = None
 
     def openSerial(self, port, baudRate, timeout):
+        """ Opens the serial port """
+        if self.serial is not None:
+            raise Exception("Cannot read multiple serial")
         self.serial = Serial(port = port, baudrate = baudRate, timeout = timeout)
-        self.serial.open()
 
     def closeSerial(self):
-        self.serial.close()
+        """ Closes the serial port """
+        if self.serial is not None:
+            self.serial.close()
         self.serial = None
 
     def workerStart(self):
-        while(True):
+        """ Runs in a loop reading from the serial port """
+        while(self.active):
             if self.serial is not None:
-                line = ser.readline()
-                self.emit(QtCore.SIGNAL("readline(QString)"), line)
+                try:
+                    line = self.serial.readline()
+                except Exception as e:
+                    print("Error Reading Serial Port")
+                self.readline[str].emit(line)
             else:
                 QtCore.QThread.msleep(500)
 
     def workerStop(self):
-        if self.serial is not None:
-            self.serial.stop()
+        self.closeSerial()
 
 class SerialPlot(QtGui.QWidget):
+    """ Serial Plot Window """
     def __init__(self):
         super(SerialPlot, self).__init__()
         self.isRecording = False
@@ -41,7 +53,15 @@ class SerialPlot(QtGui.QWidget):
         self.runConfig()
         self.makeThreads()
 
+    def closeEvent(self, event):
+        """ Overridden from QWidget to handle thread cleanups """
+        self.serialWorker.active = False
+        self.serialWorker.closeSerial()
+        self.serialThread.quit()
+        self.serialThread.wait()
+
     def makeThreads(self):
+        """ Setup the serial reader thread and worker """
         thread = QtCore.QThread()
         worker = SerialWorker()
         worker.moveToThread(thread)
@@ -53,6 +73,7 @@ class SerialPlot(QtGui.QWidget):
         thread.start()
 
     def makeConfigEditor(self):
+        """ Build the config editor pane """
         frame = QtGui.QFrame()
         frame.setFrameShape(QtGui.QFrame.NoFrame)
         layout = QtGui.QGridLayout()
@@ -68,6 +89,7 @@ class SerialPlot(QtGui.QWidget):
         loadButton.clicked.connect(self.handleConfigLoadClick)
         layout.addWidget(loadButton, 1, 0)
         saveButton = QtGui.QPushButton("Save")
+        saveButton.clicked.connect(self.handleConfigSaveClick)
         layout.addWidget(saveButton, 1, 1)
 
         editorTimer = QtCore.QTimer()
@@ -93,6 +115,7 @@ class SerialPlot(QtGui.QWidget):
         return frame
 
     def makeDataEditor(self):
+        """ Builds the Data editor pane """
         frame = QtGui.QFrame()
         frame.setFrameShape(QtGui.QFrame.NoFrame)
         layout = QtGui.QGridLayout()
@@ -132,12 +155,14 @@ class SerialPlot(QtGui.QWidget):
         return frame
 
     def makeLowerPane(self):
+        """ Builds the lower Pane """
         hSplitter = QtGui.QSplitter(Qt.Horizontal)
         hSplitter.addWidget(self.makeConfigEditor())
         hSplitter.addWidget(self.makeDataEditor())
         return hSplitter
 
     def makeGui(self):
+        """ Builds the User Interface """
         layout = QtGui.QHBoxLayout()
         vSplitter = QtGui.QSplitter(Qt.Vertical)
         plot = pg.PlotWidget()
@@ -147,7 +172,8 @@ class SerialPlot(QtGui.QWidget):
         layout.addWidget(vSplitter)
         self.setLayout(layout)
 
-    def parseLine(self, line):
+    def defParseLine(self, line):
+        """ Default line parsing implementation """
         line = line.strip()
         if (not (line.startswith("###") and line.endswith("###"))):
             return None
@@ -161,35 +187,43 @@ class SerialPlot(QtGui.QWidget):
             return None
 
     def clearData(self):
+        """ Clears the plot and the data """
         self.data.clear()
         self.dataEditorWidget.clear()
 
     def addDataLine(self, line):
+        """ Adds a line of data and updates the plot """
         self.dataEditorWidget.insertPlainText(line)
-        item = self.parseLine(line)
+        self.dataEditorWidget.moveCursor(QtGui.QTextCursor.End)
+        item = self.parseLine(str(line))
         if item is None:
             return
+        if self.processLine:
+            item = self.processLine(item[0], item[1], item[2])
         timestamp, label, value = item
         if label not in self.data:
             self.data[label] = ([],[])
         self.data[label][0].append(timestamp)
         self.data[label][1].append(value)
+        self.updatePlot()
 
     def loadData(self, filename):
+        """ Loads data from a file and updates the plot """
         self.clearData()
         file = open(filename)
         for line in file:
             self.addDataLine(line)
         file.close()
-        self.dataEditorWidget.moveCursor(QtGui.QTextCursor.End)
         self.updatePlot()
 
     def clearPlots(self):
+        """ Clears the plots """
         for label, plot in self.plots.iteritems():
             self.plotWidget.removeItem(plot)
         self.plots.clear()
 
     def updatePlot(self):
+        """ Updates the plots. Called when the data has changed. """
         if len(self.plots) == 0:
             for label in self.plotLabels:
                 if isinstance(label, tuple):
@@ -199,6 +233,7 @@ class SerialPlot(QtGui.QWidget):
                 else:
                     color = (255,255,255)
                 self.plots[label] = self.plotWidget.plot()
+                self.plots[label].setClipToView(False)
                 self.plots[label].setPen(color)
 
         for label, plot in self.plots.iteritems():
@@ -208,28 +243,34 @@ class SerialPlot(QtGui.QWidget):
                 plot.setData(x = [], y = [])
 
     def saveData(self, fname):
+        """ Save the data to a file """
         with open(fname, "w") as outFile:
             outFile.write(str(self.dataEditorWidget.toPlainText()))
 
     def saveConfig(self, fname):
+        """ Save the config to a file """
         with open(fname, "w") as outFile:
             outFile.write(str(self.configEditorWidget.toPlainText()))
 
     def loadConfig(self, fname):
+        """ Loads a config file. This does not run it immediately. """
         text = open(fname).read()
         self.configEditorWidget.setPlainText(text)
 
-    def config(self, plotLabels = [], serialPort = "COM3", serialBaudRate=115200, serialTimeout=5):
+    def config(self, plotLabels = [], parseLine=None, processLine=None, serialPort = "COM3", serialBaudRate=115200, serialTimeout=5):
+        """ Configures the app. Called from config scripts. """
         if not isinstance(plotLabels, list):
             raise Exception("plotLabels should be a list")
+        self.parseLine = self.defParseLine if parseLine is None else parseLine
         self.plotLabels = plotLabels
         self.serialPort = serialPort
         self.serialBaudRate = serialBaudRate
         self.serialTimeout = serialTimeout
+        self.processLine = processLine
 
     def runConfig(self):
+        """ Runs the config script currently in the editor """
         code = str(self.configEditorWidget.toPlainText())
-        print(repr(code))
         configGlobals = {}
         configLocals = {"config": self.config}
         try:
@@ -290,7 +331,6 @@ class SerialPlot(QtGui.QWidget):
             except SerialException as e:
                 self.dataStatusLabelWidget.setStyleSheet("QLabel {color: red}")
                 self.dataStatusLabelWidget.setText(str(e))
-
         else:
             self.serialWorker.closeSerial()
             self.dataRecordButtonWidget.setText("Record")

@@ -1,1 +1,7 @@
-config(plotLabels=[("target", "#00FFFF")], serialPort="COM4")
+config(
+    serialPort="COM7",
+    plotLabels=[
+        ("target", "#00FFFF"),
+        ("sin", "#FF0000")
+    ],
+)
