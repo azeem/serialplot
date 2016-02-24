@@ -1,7 +1,9 @@
 config(
-    serialPort="COM7",
+    serialPort="COM3",
     plotLabels=[
-        ("target", "#00FFFF"),
-        ("sin", "#FF0000")
+        ("speed", "#0000FF"),
+        ("error", "#00FF00"),
+        ("tbh", "#FF0000"),
+        ("power", "#FFFF00"),
     ],
 )

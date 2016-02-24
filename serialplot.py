@@ -31,6 +31,8 @@ class SerialWorker(QtCore.QObject):
         while(self.active):
             if self.serial is not None:
                 try:
+                    self.serial.write(b"\n")
+                    self.serial.flush()
                     line = self.serial.readline()
                 except Exception as e:
                     print("Error Reading Serial Port")
@@ -177,8 +179,14 @@ class SerialPlot(QtGui.QWidget):
         line = line.strip()
         if (not (line.startswith("###") and line.endswith("###"))):
             return None
-        line = line[3:-3]
         try:
+            line = line[3:-3]
+            checkSum, line = [item for item in line.split("#")]
+            checkSum = int(checkSum)
+            for char in line:
+                checkSum = checkSum ^ ord(char)
+            if checkSum != 0:
+                return
             timestamp, label, value = [item.strip() for item in line.split(",")]
             timestamp = float(timestamp)
             value = float(value)
@@ -195,7 +203,10 @@ class SerialPlot(QtGui.QWidget):
         """ Adds a line of data and updates the plot """
         self.dataEditorWidget.insertPlainText(line)
         self.dataEditorWidget.moveCursor(QtGui.QTextCursor.End)
-        item = self.parseLine(str(line))
+        try:
+            item = self.parseLine(str(line))
+        except UnicodeEncodeError as e:
+            return
         if item is None:
             return
         if self.processLine:
