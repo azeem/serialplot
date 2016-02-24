@@ -13,12 +13,14 @@ class SerialWorker(QtCore.QObject):
         super(SerialWorker, self).__init__()
         self.active = True
         self.serial = None
+        self.sendNewLine = True
 
-    def openSerial(self, port, baudRate, timeout):
+    def openSerial(self, port, baudRate, timeout, sendNewLine=True):
         """ Opens the serial port """
         if self.serial is not None:
             raise Exception("Cannot read multiple serial")
         self.serial = Serial(port = port, baudrate = baudRate, timeout = timeout)
+        self.sendNewLine = sendNewLine
 
     def closeSerial(self):
         """ Closes the serial port """
@@ -31,8 +33,9 @@ class SerialWorker(QtCore.QObject):
         while(self.active):
             if self.serial is not None:
                 try:
-                    self.serial.write(b"\n")
-                    self.serial.flush()
+                    if self.sendNewLine:
+                        self.serial.write(b"\n")
+                        self.serial.flush()
                     line = self.serial.readline()
                 except Exception as e:
                     print("Error Reading Serial Port")
@@ -268,7 +271,7 @@ class SerialPlot(QtGui.QWidget):
         text = open(fname).read()
         self.configEditorWidget.setPlainText(text)
 
-    def config(self, plotLabels = [], parseLine=None, processLine=None, serialPort = "COM3", serialBaudRate=115200, serialTimeout=5):
+    def config(self, plotLabels = [], parseLine=None, processLine=None, serialPort = "COM3", serialBaudRate=115200, serialTimeout=5, sendNewLine=True):
         """ Configures the app. Called from config scripts. """
         if not isinstance(plotLabels, list):
             raise Exception("plotLabels should be a list")
@@ -278,6 +281,7 @@ class SerialPlot(QtGui.QWidget):
         self.serialBaudRate = serialBaudRate
         self.serialTimeout = serialTimeout
         self.processLine = processLine
+        self.sendNewLine = sendNewLine
 
     def runConfig(self):
         """ Runs the config script currently in the editor """
@@ -334,7 +338,8 @@ class SerialPlot(QtGui.QWidget):
                 self.serialWorker.openSerial(
                     port=self.serialPort,
                     baudRate=self.serialBaudRate,
-                    timeout=self.serialTimeout
+                    timeout=self.serialTimeout,
+                    sendNewLine=self.sendNewLine
                 )
                 self.dataRecordButtonWidget.setText("Stop")
                 self.dataStatusLabelWidget.setStyleSheet("QLabel {color: green}")
