@@ -171,6 +171,7 @@ class SerialPlot(QtGui.QWidget):
         layout = QtGui.QHBoxLayout()
         vSplitter = QtGui.QSplitter(Qt.Vertical)
         plot = pg.PlotWidget()
+        self.plotLegend = plot.addLegend()
         self.plotWidget = plot
         vSplitter.addWidget(plot)
         vSplitter.addWidget(self.makeLowerPane())
@@ -234,6 +235,8 @@ class SerialPlot(QtGui.QWidget):
         """ Clears the plots """
         for label, plot in self.plots.iteritems():
             self.plotWidget.removeItem(plot)
+        self.plotLegend.scene().removeItem(self.plotLegend)
+        self.plotLegend = self.plotWidget.addLegend();
         self.plots.clear()
 
     def updatePlot(self):
@@ -246,7 +249,7 @@ class SerialPlot(QtGui.QWidget):
                     color = (color.red(), color.green(), color.blue())
                 else:
                     color = (255,255,255)
-                self.plots[label] = self.plotWidget.plot()
+                self.plots[label] = self.plotWidget.plot(name=label)
                 self.plots[label].setClipToView(False)
                 self.plots[label].setPen(color)
 
